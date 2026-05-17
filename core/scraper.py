@@ -1,81 +1,66 @@
-import requests
+from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
-import json
+import time
 
 def extrair_preco(url):
     """
-    Extrai o preço e nome do produto buscando o bloco de dados estruturados 
-    (Schema.org JSON-LD) oculto no HTML do Mercado Livre.
+    Usa Playwright para abrir a página e possui detecção inteligente de Captcha.
+    Se detectar bloqueio, aguarda a resolução manual do usuário.
     """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control": "max-age=0"
-    }
-    
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code != 200:
-            print(f"❌ Erro ao acessar. Status HTTP: {response.status_code}")
-            return None, None
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=False) # Precisa ser visível para você resolver
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                locale="pt-BR"
+            )
+            page = context.new_page()
             
-        soup = BeautifulSoup(response.text, "html.parser")
-        
-        # Busca todas as tags <script type="application/ld+json">
-        scripts_json = soup.find_all("script", type="application/ld+json")
-        
-        for script in scripts_json:
-            try:
-                dados = json.loads(script.string)
+            print("🌐 Acessando a página...")
+            page.goto(url, wait_until="load", timeout=30000)
+            
+            # --- DETECÇÃO DE CAPTCHA ---
+            # Verifica se palavras-chave de segurança ou elementos do Captcha estão na tela
+            content_lower = page.content().lower()
+            if "captcha" in content_lower or "robot" in content_lower or "humano" in content_lower or page.locator("iframe[src*='captcha']").count() > 0:
+                print("\n⚠️  [ALERTA] Um Captcha foi detectado na tela!")
+                print("👉 Por favor, resolva o desafio manualmente na janela do navegador que se abriu.")
+                print("⏳ O script está aguardando você resolver... (Limite de 60 segundos)")
                 
-                # O Mercado Livre coloca os dados do produto dentro de um formato estruturado
-                # Verificamos se o JSON atual descreve um "Product"
-                if isinstance(dados, dict) and dados.get("@type") == "Product":
-                    nome = dados.get("name")
-                    
-                    # O preço fica dentro da chave "offers"
-                    ofertas = dados.get("offers", {})
-                    preco = ofertas.get("price")
-                    
-                    if nome and preco:
-                        return str(nome).strip(), float(preco)
-                        
-                # Às vezes o JSON vem dentro de uma lista de objetos
-                elif isinstance(dados, list):
-                    for item in dados:
-                        if item.get("@type") == "Product":
-                            nome = item.get("name")
-                            preco = item.get("offers", {}).get("price")
-                            if nome and preco:
-                                return str(nome).strip(), float(preco)
-            except (json.JSONDecodeError, TypeError, ValueError):
-                continue
-                
-        # Fallback caso o JSON-LD mude de lugar: tentar pegar as meta tags básicas
-        meta_title = soup.find("meta", property="og:title") or soup.find("title")
-        nome_fallback = meta_title.text.strip() if meta_title else "Produto Não Encontrado"
+                # O script fica vigiando a página por até 60 segundos esperando a tag de preço aparecer
+                try:
+                    page.wait_for_selector("span.andes-money-amount", timeout=60000)
+                    print("✅ Captcha resolvido! Continuando a extração...")
+                except:
+                    print("❌ Tempo esgotado. O Captcha não foi resolvido a tempo.")
+                    browser.close()
+                    return None, None
+            
+            # Pequena pausa de segurança e captura do HTML final
+            time.sleep(2)
+            html = page.content()
+            browser.close()
+            
+        # --- EXTRAÇÃO COM BEAUTIFULSOUP ---
+        soup = BeautifulSoup(html, "html.parser")
         
-        meta_price = soup.find("meta", itemprop="price")
-        if meta_price and meta_price.get("content"):
-            return nome_fallback, float(meta_price["content"])
+        tag_titulo = soup.find("h1")
+        nome_produto = tag_titulo.text.strip() if tag_titulo else "Produto Encontrado"
+        
+        container_preco = soup.find("span", class_="andes-money-amount")
+        if container_preco:
+            tag_fracao = container_preco.find("span", class_="andes-money-amount__fraction")
+            if tag_fracao:
+                valor_limpo = tag_fracao.text.replace(".", "")
+                return nome_produto, float(valor_limpo)
 
-        print("❌ Não foi possível encontrar os dados estruturados do produto.")
-        return None, None
+        return nome_produto, None
 
     except Exception as e:
-        print(f"❌ Erro crítico ao realizar o scraping: {e}")
+        print(f"❌ Erro no fluxo do scraper: {e}")
         return None, None
 
-# --- DISPARADOR DE TESTE ---
 if __name__ == "__main__":
-    print("🚀 Testando o Scraper via JSON Estruturado...")
-    
-    # Vamos testar com um link direto de um produto ativo
-    url_teste = "https://www.mercadolivre.com.br/apple-iphone-11-64-gb-preto/p/MLB15149556"
-    
+    url_teste = "https://www.mercadolivre.com.br/p/MLB32269550"
     nome, preco = extrair_preco(url_teste)
-    
-    print("\n--- Resultado do Teste ---")
-    print(f"📦 Produto: {nome}")
-    print(f"💰 Preço Extraído: {preco} (Tipo: {type(preco).__name__})")
+    print(f"\n📦 Produto: {nome} | 💰 Preço: {preco}")
