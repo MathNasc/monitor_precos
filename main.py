@@ -10,6 +10,7 @@ load_dotenv(dotenv_path=base_dir / ".env")
 # Importação dos nossos raspadores especializados
 from core.scraper_mercadolivre import extrair_preco as extrair_mercadolivre
 from core.scraper_amazon import extrair_dados_amazon as extrair_amazon
+from core.scraper_shopee import extrair_dados_shopee as extrair_shopee
 from core.database import salvar_historico
 from core.notifier import enviar_alerta_telegram
 
@@ -27,6 +28,10 @@ def rotear_scraper(url):
     elif "amazon.com.br" in url_low or "amazon.com" in url_low:
         print("🛒 Marketplace Detectado: Amazon Brasil")
         return extrair_amazon(url)
+        
+    elif "shopee.com.br" in url_low or "shopee.com" in url_low:
+        print("🛒 Marketplace Detectado: Shopee Brasil")
+        return extrair_shopee(url)
         
     else:
         print("⚠️ Erro: Este marketplace ainda não é suportado pelo sistema.")
@@ -55,7 +60,7 @@ def rodar_monitor():
             
         print(f"🔎 Analisando produto no link: {url[:50]}...")
         
-        # 🎯 ROTEAMENTO INTELIGENTE: O main escolhe o scraper baseado na URL
+        # Roteamento Inteligente baseado no Link
         dados = rotear_scraper(url)
         
         if dados and dados.get("preco"):
@@ -65,14 +70,13 @@ def rodar_monitor():
             print(f"📦 Produto Identificado: {nome}")
             print(f"💰 Preço Atual: R$ {preco_atual:.2f} | Preço Alvo: R$ {preco_alvo:.2f}")
             
-            # Exibe a avaliação se ela foi capturada (Amazon ou ML)
             if dados.get("nota"):
                 print(f"⭐ Avaliação: {dados.get('nota')} ({dados.get('avaliacoes')} opiniões)")
             
-            # 4. Salva a estrutura de dados ricos na planilha única (unificando o histórico)
+            # Salva no histórico de auditoria (CSV)
             salvar_historico(dados)
             
-            # 5. Condicional de Alerta (Gatilho)
+            # Condicional de Alerta (Gatilho)
             if preco_atual <= preco_alvo:
                 print("🎯 META ATINGIDA! Preparando disparo do alerta...")
                 sucesso_envio = enviar_alerta_telegram(nome, preco_atual, url, url_imagem=dados.get("url_imagem"))
@@ -85,7 +89,7 @@ def rodar_monitor():
                 print("⏳ O preço ainda está acima da meta estabelecida.")
         else:
             print("❌ Falha ao processar os dados deste produto nesta rodada.")
-        print("-" * 50) # Linha divisória estética por produto
+        print("-" * 50)
             
     print("\n===============================================")
     print("✅ CICLO DE VERIFICAÇÃO MULTICLOUD CONCLUÍDO!")

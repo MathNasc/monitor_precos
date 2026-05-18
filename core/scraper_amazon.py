@@ -61,30 +61,41 @@ def extrair_dados_amazon(url):
             except:
                 continue
 
-        # 2. FALLBACK VISUAL EVOLUÍDO (Baseado no seu arquivo de Debug real)
+        # 2. FALLBACK VISUAL EVOLUÍDO (Protegido contra armadilhas de parcelamento)
         if not preco_atual:
+            # Removemos seletores genéricos que continham textos de parcelas e focamos nos IDs de preço cheio
             tag_preco = (
-                soup.find("span", class_="bbc-price") or  # 🔥 Captura o layout do seu debug!
-                soup.find("span", class_="a-color-price") or
-                soup.find("span", class_="a-price") or
+                soup.find("span", class_="bbc-price") or  
                 soup.find("span", id="price_inside_buybox") or 
-                soup.find("span", id="newBuyBoxPrice")
+                soup.find("span", id="newBuyBoxPrice") or
+                soup.find("span", class_="apexPriceToPay") or
+                soup.find("span", class_="a-price-whole") # Foca estritamente na parte inteira do preço principal
             )
             
             if tag_preco:
-                tag_offscreen = tag_preco.find("span", class_="a-offscreen")
-                texto_preco = tag_offscreen.text if tag_offscreen else tag_preco.text
-                
-                if texto_preco:
-                    # Remove R$, espaços normais e o espaço oculto (\xa0) que causava o erro
-                    texto_preco = texto_preco.replace("R$", "").replace("\xa0", "").strip()
-                    # Transforma formato BR em Float válido (1.250,99 -> 1250.99)
-                    texto_preco = texto_preco.replace(".", "").replace(",", ".")
+                # Se ele pegou a tag 'a-price-whole', precisamos pegar também os centavos se existirem
+                if "a-price-whole" in tag_preco.get("class", []):
+                    parte_inteira = tag_preco.text.strip().replace(".", "").replace(",", "")
+                    container_pai = tag_preco.find_parent("span", class_="a-price")
+                    parte_centavos = "00"
+                    if container_pai:
+                        tag_centavos = container_pai.find("span", class_="a-price-fraction")
+                        if tag_centavos:
+                            parte_centavos = tag_centavos.text.strip()
+                    texto_preco = f"{parte_inteira}.{parte_centavos}"
+                    preco_atual = float(texto_preco)
+                else:
+                    tag_offscreen = tag_preco.find("span", class_="a-offscreen")
+                    texto_preco = tag_offscreen.text if tag_offscreen else tag_preco.text
                     
-                    # Usa Expressão Regular para garantir que fiquem apenas números e ponto decimal
-                    texto_filtrado = "".join(re.findall(r"[-+]?\d*\.\d+|\d+", texto_preco))
-                    if texto_filtrado:
-                        preco_atual = float(texto_filtrado)
+                    if texto_preco:
+                        # Limpeza para evitar capturar textos longos de parcelas
+                        texto_preco = texto_preco.replace("R$", "").replace("\xa0", "").strip()
+                        texto_preco = texto_preco.replace(".", "").replace(",", ".")
+                        
+                        texto_filtrado = "".join(re.findall(r"[-+]?\d*\.\d+|\d+", texto_preco))
+                        if texto_filtrado and len(texto_filtrado) <= 8: # Evita strings gigantescas de juros
+                            preco_atual = float(texto_filtrado)
 
         # 3. EXTRAÇÃO COMPLEMENTAR DE TÍTULO E IMAGEM
         if nome_produto == "Produto Amazon":

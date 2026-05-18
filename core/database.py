@@ -4,7 +4,7 @@ from datetime import datetime
 
 def salvar_historico(dados, arquivo_csv="historico_precos.csv"):
     """
-    Salva o dicionário completo de dados do produto no histórico CSV.
+    Salva o dicionário completo de dados de qualquer marketplace no histórico CSV unificado.
     """
     try:
         arquivo_existe = os.path.exists(arquivo_csv)
@@ -13,11 +13,9 @@ def salvar_historico(dados, arquivo_csv="historico_precos.csv"):
         with open(arquivo_csv, mode="a", newline="", encoding="utf-8") as arquivo:
             escritor = csv.writer(arquivo)
             
-            # Define o cabeçalho com as colunas extras de metadados
             if not arquivo_existe:
                 escritor.writerow(["Data/Hora", "Produto", "Preço", "Nota", "Avaliações", "Condição", "URL Imagem"])
             
-            # Escreve os dados mapeando as chaves do dicionário de forma segura
             escritor.writerow([
                 data_atual, 
                 dados.get("produto"), 
