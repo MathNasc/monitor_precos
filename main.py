@@ -11,6 +11,7 @@ load_dotenv(dotenv_path=base_dir / ".env")
 from core.scraper_mercadolivre import extrair_preco as extrair_mercadolivre
 from core.scraper_amazon import extrair_dados_amazon as extrair_amazon
 from core.scraper_shopee import extrair_dados_shopee as extrair_shopee
+from core.scraper_magalu import extrair_dados_magalu as extrair_magalu
 from core.database import salvar_historico
 from core.notifier import enviar_alerta_telegram
 
@@ -32,6 +33,10 @@ def rotear_scraper(url):
     elif "shopee.com.br" in url_low or "shopee.com" in url_low:
         print("🛒 Marketplace Detectado: Shopee Brasil")
         return extrair_shopee(url)
+        
+    elif "magazineluiza.com.br" in url or "magalu" in url:
+        print("🛒 Marketplace Detectado: Magazine Luiza")
+        return extrair_magalu(url)
         
     else:
         print("⚠️ Erro: Este marketplace ainda não é suportado pelo sistema.")
