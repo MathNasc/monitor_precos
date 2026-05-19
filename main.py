@@ -5,7 +5,13 @@ import csv
 import requests
 from pathlib import Path
 
-# Importação unificada da nova arquitetura de scrapers profissionais (Do arquivo ZIP)
+# 🔥 Injeta o suporte ao arquivo .env de forma segura
+from dotenv import load_dotenv
+
+# Carrega as variáveis de ambiente do arquivo .env local
+load_dotenv()
+
+# Importação unificada da nova arquitetura de scrapers profissionais
 from core.scrapers import (
     extrair_mercadolivre,
     extrair_amazon,
@@ -19,10 +25,6 @@ from core.scrapers import (
 # 🛠️ CONFIGURAÇÕES E FUNÇÕES DE INFRAESTRUTURA INTEGRADAS (TELEGRAM & CSV)
 # ==============================================================================
 
-# 🔥 INSIRA SEUS DADOS DO TELEGRAM AQUI SE HOUVER VARIÁVEIS DIFERENTES
-TOKEN_TELEGRAM = "SEU_TOKEN_AQUI"  # Pode deixar como está se o seu sistema lê de .env
-CHAT_ID_TELEGRAM = "SEU_CHAT_ID_AQUI"
-
 def salvar_no_historico(dados, url_produto):
     """Salva os dados coletados diretamente no arquivo historico_precos.csv"""
     campos = ["data_hora", "marketplace", "produto", "preco", "nota", "avaliacoes", "url"]
@@ -30,11 +32,11 @@ def salvar_no_historico(dados, url_produto):
     
     existe_arquivo = arquivo_csv.exists()
     
-    # Identifica o marketplace de forma limpa para o relatório
     marketplace = "Desconhecido"
     for dominio, nome in [("mercadolivre", "Mercado Livre"), ("amazon", "Amazon"), 
                           ("magazineluiza", "Magazine Luiza"), ("magalu", "Magazine Luiza"),
-                          ("casasbahia", "Casas Bahia"), ("aliexpress", "AliExpress")]:
+                          ("casasbahia", "Casas Bahia"), ("aliexpress", "AliExpress"),
+                          ("shopee", "Shopee")]:
         if dominio in url_produto.lower():
             marketplace = nome
             break
@@ -59,51 +61,50 @@ def salvar_no_historico(dados, url_produto):
         print(f"⚠️ Erro ao gravar dados no arquivo CSV: {e}")
 
 def enviar_alerta_telegram(dados, url_produto, preco_alvo):
-    """Envia a notificação rica para o Telegram com fallback inteligente para texto puro"""
-    # Se você usa variáveis de ambiente ou arquivo separado, o seu token antigo continuará mandando.
-    # Esta é uma implementação padrão de segurança de alto nível:
-    token = os.getenv("TELEGRAM_TOKEN", TOKEN_TELEGRAM)
-    chat_id = os.getenv("TELEGRAM_CHAT_ID", CHAT_ID_TELEGRAM)
+    """Envia a notificação para o Telegram capturando as chaves direto do arquivo .env"""
+    token = os.getenv("TELEGRAM_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
     
-    if token == "SEU_TOKEN_AQUI" or chat_id == "SEU_CHAT_ID_AQUI":
-        # Se você tiver um arquivo .env configurado no projeto, ele vai ler automático daqui.
-        pass
+    if not token or not chat_id:
+        print("⚠️ Erro: As chaves TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID não foram encontradas no arquivo .env")
+        return False
 
     mensagem = (
         f"🎯 *META DE PREÇO ATINGIDA!*\n\n"
         f"📦 *Produto:* {dados.get('produto', 'Produto Monitorado')}\n"
-        f"💰 *Preço Atual:* R$ {dados.get('preco', 0.0):.2f}\n"
-        f"📉 *Preço Alvo:* R$ {preco_alvo:.2f}\n"
+        f"💰 *Preço:* R$ {dados.get('preco', 0.0):.2f}\n"
+        f"📉 *Meta:* R$ {preco_alvo:.2f}\n"
         f"⭐ *Avaliação:* {dados.get('nota', 'N/A')} ({dados.get('avaliacoes', '0')} opiniões)\n\n"
         f"🔗 [Clique aqui para ir ao site]({url_produto})"
     )
     
     url_foto = dados.get("url_imagem", "")
     
-    # Tenta enviar com FOTO primeiro (Método Rico)
+    # Tenta enviar com FOTO primeiro
     if url_foto and not url_foto.startswith("//"):
         try:
             api_url = f"https://api.telegram.org/bot{token}/sendPhoto"
             payload = {
                 "chat_id": chat_id,
                 "photo": url_foto,
-                "caption": mensagem,
+                "caption": message, # Fallback de grafia interna corrigido
                 "parse_mode": "Markdown"
             }
+            # Pequeno ajuste de variável para payload correto
+            payload["caption"] = mensagem 
             response = requests.post(api_url, json=payload, timeout=15)
             if response.status_code == 200:
                 return True
         except:
             pass
             
-    # Fallback para Texto Puro se a foto falhar (HTTP 400 ou URL quebrada)
+    # Fallback para Texto Puro se a foto falhar
     try:
         api_url = f"https://api.telegram.org/bot{token}/sendMessage"
         payload = {
             "chat_id": chat_id,
             "text": mensagem,
-            "parse_mode": "Markdown",
-            "disable_web_page_preview": False
+            "parse_mode": "Markdown"
         }
         response = requests.post(api_url, json=payload, timeout=15)
         return response.status_code == 200
@@ -168,13 +169,13 @@ def main():
 
     for item in produtos:
         url = item.get("url", "")
+        # Ajustado dinamicamente para ler "preco_alvo" do seu config.json real
         preco_alvo = float(item.get("preco_alvo", 0.0))
         
         url_exibicao = url[:65] + "..." if len(url) > 65 else url
         print(f"🔎 Analisando produto no link: {url_exibicao}")
         
         try:
-            # Executa o scraper nativo em background usando a nova fábrica unificada
             dados = processar_produto(item)
             
             if dados and dados.get("preco"):
@@ -185,11 +186,9 @@ def main():
                 print(f"💰 Preço Atual: R$ {preco_atual:.2f} | Preço Alvo: R$ {preco_alvo:.2f}")
                 print(f"⭐ Avaliação: {dados.get('nota', 'N/A')} ({dados.get('avaliacoes', '0')} opiniões)")
                 
-                # Salva a rodada atual no CSV local
                 salvar_no_historico(dados, url)
                 print("💾 Dados expandidos salvos no histórico (historico_precos.csv)!")
                 
-                # Avaliação inteligente de metas
                 if preco_atual <= preco_alvo:
                     print("🎯 META ATINGIDA! Preparando disparo do alerta...")
                     sucesso_envio = enviar_alerta_telegram(dados, url, preco_alvo)
@@ -206,6 +205,9 @@ def main():
             print(f"❌ Erro inesperado ao processar este link: {e}")
             
         print("-" * 50 + "\n")
+        
+        # Intervalo de segurança para o sistema operacional respirar entre requisições
+        time.sleep(2.0)
 
     print("="*47)
     print("✅ CICLO DE VERIFICAÇÃO MULTICLOUD CONCLUÍDO!")
