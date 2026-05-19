@@ -1,1 +1,1 @@
-# Módulo core do monitor de preços
+# Inicializador do pacote core

@@ -1,22 +1,36 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
-
-
-# testing
-
-
-# production
+# === Ambiente Virtual, Dependências e Cache ===
 venv/
+.venv/
 __pycache__/
-*.csv
+*.pyc
+.pytest_cache/
 
-# misc
+# === Dados de Sessão e Automação (Segurança do Playwright) ===
+user_data/
+.playwright/
+
+# === Histórico de Preços, Relatórios e Bancos de Dados ===
+historico_precos.csv
+*.csv
+*.db
+*.log
+*.sqlite
+
+# === Configurações Pessoais, Arquivos Locais e Texto ===
+config.json
+github help.txt
+
+# === Chaves de API, Tokens e Segredos (Segurança Máxima) ===
+*credentials*.json
+secrets.py
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# Others
-github help.txt
+# === Arquivos do Sistema Operacional ===
+.DS_Store
+Thumbs.db
