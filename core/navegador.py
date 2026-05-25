@@ -1,52 +1,31 @@
-from playwright.sync_api import sync_playwright
+from seleniumbase import Driver
 import time
 
-def executar_navegador_oculto(url, delay=8.0):
+def executar_navegador_oculto(url, delay=7.0):
     """
-    Motor do Playwright utilizando o Google Chrome FÍSICO da máquina.
-    Fura bloqueios de WAF que identificam binários customizados de Chromium/Firefox.
+    Motor Elegante usando Undetected ChromeDriver (SeleniumBase).
+    Fura bloqueios militares (Akamai/Cloudflare) modificando o binário do Chrome,
+    retornando o HTML completo e limpo para extração de imagens e preços.
     """
-    print("🥷 [Motor] Acionando o Google Chrome original do sistema...")
+    print("🥷 [Motor] Acionando SeleniumBase UC (Undetected Mode)...")
+    driver = None
     try:
-        with sync_playwright() as p:
-            # O PULO DO GATO: channel="chrome" usa o seu navegador real
-            browser = p.chromium.launch(
-                channel="chrome", 
-                headless=False,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox"
-                ]
-            )
-            
-            context = browser.new_context(
-                viewport={"width": 1366, "height": 768},
-                locale="pt-BR",
-                timezone_id="America/Sao_Paulo",
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            )
-            
-            page = context.new_page()
-            
-            # Limpa rastros de automação
-            page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
-            
-            try:
-                page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            except:
-                pass
-                
-            time.sleep(delay)
-            
-            html_content = page.content()
-            texto_da_tela = page.locator("body").inner_text()
-            titulo = page.title()
-            
-            context.close()
-            browser.close()
-            
-            return html_content, texto_da_tela, titulo
-            
+        # uc=True é a mágica: ativa o bypass nativo indetectável
+        driver = Driver(uc=True, headless=False)
+        
+        # uc_open_with_reconnect foi feito especificamente para passar por Desafios JS de WAFs
+        driver.uc_open_with_reconnect(url, reconnect_time=delay)
+        
+        # Pega o código-fonte da página já renderizada e aprovada pelo firewall
+        html_content = driver.page_source
+        texto_da_tela = driver.find_element("tag name", "body").text
+        titulo = driver.title
+        
+        driver.quit()
+        return html_content, texto_da_tela, titulo
+        
     except Exception as e:
-        print(f"❌ Erro crítico no motor Chrome: {e}")
+        print(f"❌ Erro crítico no motor SeleniumBase: {e}")
+        if driver:
+            driver.quit()
         return None, None, None

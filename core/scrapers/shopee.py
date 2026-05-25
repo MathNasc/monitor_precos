@@ -1,55 +1,74 @@
-from curl_cffi import requests
 import re
+import json
+from bs4 import BeautifulSoup
+from core.navegador import executar_navegador_oculto
 
 def extrair_shopee(url):
-    print("⚡ [Shopee] Acionando API Mobile com Camuflagem de Rede (curl_cffi)...")
+    print("⚡ [Shopee] Extração limpa via Undetected ChromeDriver...")
     url_limpa = url.split("?")[0]
     
-    # Isola o ID da loja e do item
-    match_prod = re.search(r"product/(\d+)/(\d+)", url_limpa)
-    if match_prod:
-        shop_id, item_id = match_prod.groups()
-    else:
-        match_i = re.search(r"-i\.(\d+)\.(\d+)", url_limpa)
-        if match_i:
-            shop_id, item_id = match_i.groups()
-        else:
-            return None
-
-    endpoint = f"https://shopee.com.br/api/v4/item/get?itemid={item_id}&shopid={shop_id}"
+    # A Shopee precisa de uns segundinhos a mais para montar o preço na tela
+    html_content, texto_da_tela, titulo = executar_navegador_oculto(url_limpa, delay=8.0)
     
-    headers = {
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-        "Accept": "application/json",
-        "x-api-source": "rn"
-    }
-    
-    try:
-        # A Camuflagem: Finge ser um Chrome 110 para o Cloudflare da Shopee deixar passar
-        resposta = requests.get(endpoint, headers=headers, impersonate="chrome110", timeout=12)
+    if not html_content:
+        return None
         
-        if resposta.status_code == 200:
-            item = resposta.json().get("data", {}).get("item")
-            if item and item.get("name"):
+    soup = BeautifulSoup(html_content, "html.parser")
+    preco_atual = None
+    
+    # 🎯 TÁTICA 1: Tenta ler o código estruturado invisível (JSON-LD)
+    for script in soup.find_all("script", type="application/ld+json"):
+        if script.string and "price" in script.string:
+            try:
+                dados = json.loads(script.string)
+                if isinstance(dados, list): dados = dados[0]
+                ofertas = dados.get("offers", {})
                 
-                # Puxa o preço puro ou a média das variações
-                p_unico = float(item.get("price") or 0) / 100000.0
-                p_min = float(item.get("price_min") or 0) / 100000.0
-                p_max = float(item.get("price_max") or 0) / 100000.0
-                
-                preco_atual = p_unico if p_unico > 0 else (round((p_min + p_max) / 2.0, 2) if p_min and p_max else None)
+                # Trata produtos com variações (ex: P, M, G)
+                if ofertas.get("@type") == "AggregateOffer":
+                    low = float(ofertas.get("lowPrice", 0))
+                    high = float(ofertas.get("highPrice", 0))
+                    if low > 0 and high > 0: preco_atual = round((low + high) / 2.0, 2)
+                    elif low > 0: preco_atual = low
+                    elif high > 0: preco_atual = high
+                elif ofertas.get("price"):
+                    preco_atual = float(ofertas.get("price"))
                 
                 if preco_atual:
-                    print(f"🔍 [DEBUG SHOPEE] Preço extraído limpo da API: R$ {preco_atual}")
-                    img_hash = item.get("image") or (item.get("images")[0] if item.get("images") else None)
-                    
-                    return {
-                        "produto": item.get("name")[:80] + "...",
-                        "preco": preco_atual,
-                        "url_imagem": f"https://cf.shopee.com.br/file/{img_hash}" if img_hash else "",
-                        "nota": 4.8, "avaliacoes": "Novo", "condicao": "Novo"
-                    }
-    except Exception as e:
-        print(f"❌ [Shopee] Erro na API Furtiva: {e}")
+                    print(f"🔍 [DEBUG SHOPEE] Preço extraído do JSON oculto: R$ {preco_atual}")
+                    break
+            except:
+                pass
 
-    return None
+    # 🎯 TÁTICA 2: Fallback para a leitura visual raiz (Igual Magalu/CB)
+    if not preco_atual:
+        matches = re.findall(r"R\$\s*([\d\.,]+)", texto_da_tela)
+        if matches:
+            for match in matches:
+                try:
+                    limpo = match.replace(".", "").replace(",", ".")
+                    val = float("".join(re.findall(r"[-+]?\d*\.\d+|\d+", limpo)))
+                    if val > 5.0:  
+                        preco_atual = val
+                        print(f"🔍 [DEBUG SHOPEE] Preço capturado da tela: R$ {preco_atual}")
+                        break
+                except:
+                    continue
+                    
+    if not preco_atual:
+        print("❌ [Shopee] Preço não encontrado no HTML renderizado.")
+        return None
+        
+    # 📸 Recuperando a foto oficial e o Título
+    tag_img = soup.find("meta", property="og:image")
+    url_imagem = tag_img.get("content") if tag_img else ""
+    
+    tag_h1 = soup.find("h1")
+    nome_produto = tag_h1.text.strip() if tag_h1 else (titulo.split("-")[0].strip() if titulo else "Produto Shopee")
+    
+    return {
+        "produto": nome_produto[:80] + "...",
+        "preco": preco_atual,
+        "url_imagem": url_imagem,
+        "nota": 4.8, "avaliacoes": "500", "condicao": "Novo"
+    }
