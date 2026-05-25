@@ -1,10 +1,12 @@
 import re
+from bs4 import BeautifulSoup
 from core.navegador import executar_navegador_oculto
 
 def extrair_aliexpress(url):
     html_content, texto_da_tela, titulo = executar_navegador_oculto(url, delay=7.0)
-    if not texto_da_tela: return None
+    if not html_content: return None
         
+    soup = BeautifulSoup(html_content, "html.parser")
     preco_atual = None
     precos_descobertos = []
     
@@ -22,7 +24,6 @@ def extrair_aliexpress(url):
     if precos_descobertos:
         preco_atual = precos_descobertos[0]
     else:
-        # Fallback de segurança se as linhas falharem
         matches = re.findall(r"R\$\s*([\d\.,]+)", texto_da_tela)
         if matches:
             try:
@@ -32,4 +33,13 @@ def extrair_aliexpress(url):
             except: pass
 
     if not preco_atual: return None
-    return {"produto": titulo.replace(" - AliExpress", "").strip()[:80] + "...", "preco": preco_atual, "url_imagem": "https://best.aliexpress.com/favicon.ico"}
+    
+    # 🎯 O SEGREDO DA IMAGEM: Puxar a Tag Open Graph em .jpg nativa do Ali
+    tag_img = soup.find("meta", property="og:image")
+    url_imagem = tag_img.get("content") if tag_img else ""
+
+    return {
+        "produto": titulo.replace(" - AliExpress", "").strip()[:80] + "...", 
+        "preco": preco_atual, 
+        "url_imagem": url_imagem
+    }

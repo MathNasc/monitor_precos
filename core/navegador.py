@@ -1,39 +1,38 @@
 from playwright.sync_api import sync_playwright
 import time
 
-def executar_navegador_oculto(url, delay=7.0):
+def executar_navegador_oculto(url, delay=8.0):
     """
-    Motor unificado do Playwright operando em modo efêmero (Amnésia Total).
-    Garante que cookies de bloqueio (WAF) não sejam reaproveitados entre os acessos.
+    Motor do Playwright utilizando o Google Chrome FÍSICO da máquina.
+    Fura bloqueios de WAF que identificam binários customizados de Chromium/Firefox.
     """
+    print("🥷 [Motor] Acionando o Google Chrome original do sistema...")
     try:
         with sync_playwright() as p:
-            # 1. Inicia o navegador de forma limpa, sem vincular a nenhuma pasta local
+            # O PULO DO GATO: channel="chrome" usa o seu navegador real
             browser = p.chromium.launch(
+                channel="chrome", 
                 headless=False,
                 args=[
                     "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-infobars"
+                    "--no-sandbox"
                 ]
             )
             
-            # 2. Cria um contexto virgem (como uma aba anônima indetectável)
             context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                 viewport={"width": 1366, "height": 768},
                 locale="pt-BR",
-                timezone_id="America/Sao_Paulo"
+                timezone_id="America/Sao_Paulo",
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
             )
             
             page = context.new_page()
             
-            # Limpa o rastreio de webdriver
-            page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            # Limpa rastros de automação
+            page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
             
             try:
-                # O timeout impede que o script trave para sempre se a rede oscilar
-                page.goto(url, wait_until="commit", timeout=30000)
+                page.goto(url, wait_until="domcontentloaded", timeout=30000)
             except:
                 pass
                 
@@ -43,12 +42,11 @@ def executar_navegador_oculto(url, delay=7.0):
             texto_da_tela = page.locator("body").inner_text()
             titulo = page.title()
             
-            # 3. Fecha tudo. No próximo ciclo, o robô não lembrará de absolutamente nada.
             context.close()
             browser.close()
             
             return html_content, texto_da_tela, titulo
             
     except Exception as e:
-        print(f"❌ Erro crítico no motor do navegador: {e}")
+        print(f"❌ Erro crítico no motor Chrome: {e}")
         return None, None, None

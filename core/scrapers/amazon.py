@@ -3,40 +3,53 @@ from bs4 import BeautifulSoup
 from core.navegador import executar_navegador_oculto
 
 def extrair_amazon(url):
-    """Scraper otimizado para Amazon Brasil usando a base unificada."""
-    html_content, texto_da_tela, titulo = executar_navegador_oculto(url, delay=5.0)
+    # Aumentamos 1 segundinho para dar tempo da imagem em alta qualidade carregar
+    html_content, texto_da_tela, titulo = executar_navegador_oculto(url, delay=6.0)
+    
     if not html_content:
         return None
         
-    soup = BeautifulSoup(html_content, "html.parser")
     preco_atual = None
     
-    # Tática de preço via Regex amplo na tela
+    # 🎯 O motor de preços vitorioso da Amazon
     matches = re.findall(r"R\$\s*([\d\.,]+)", texto_da_tela)
     if matches:
-        try:
-            limpo = matches[0].replace(".", "").replace(",", ".")
-            preco_atual = float("".join(re.findall(r"[-+]?\d*\.\d+|\d+", limpo)))
-        except:
-            pass
-            
-    # Captura correta e isolada de imagem (evitando conflito de argumentos)
-    tag_meta_img = soup.find("meta", property="og:image")
-    if tag_meta_img and tag_meta_img.get("content"):
-        url_imagem = tag_meta_img.get("content").strip()
-    else:
-        url_imagem = "https://www.amazon.com.br/favicon.ico"
-
-    if url_imagem.startswith("//"):
-        url_imagem = "https:" + url_imagem
-
+        for match in matches:
+            try:
+                limpo = match.replace(".", "").replace(",", ".")
+                val = float("".join(re.findall(r"[-+]?\d*\.\d+|\d+", limpo)))
+                # Ignora valores irrelevantes menores que 10 reais
+                if val > 10.0:
+                    preco_atual = val
+                    break
+            except:
+                continue
+                
     if not preco_atual:
         return None
-
-    nome_limpo = titulo.replace("Amazon.com.br:", "").replace("Amazon.com.br", "").strip()
-
+        
+    # 🎯 CAÇA À IMAGEM EM ALTA RESOLUÇÃO
+    soup = BeautifulSoup(html_content, "html.parser")
+    url_imagem = ""
+    
+    # Tática 1: Procura o ID oficial da foto na Amazon
+    img_tag = soup.find("img", id="landingImage")
+    if not img_tag:
+        img_tag = soup.find("img", id="imgBlkFront") # Para livros
+        
+    if img_tag and img_tag.get("src"):
+        url_imagem = img_tag.get("src")
+    else:
+        # Tática 2: Fallback para a tag do Facebook/Twitter
+        meta_img = soup.find("meta", property="og:image")
+        if meta_img:
+            url_imagem = meta_img.get("content")
+            
+    # Limpa o nome para não ficar gigantesco
+    nome_produto = titulo.replace(" | Amazon.com.br", "").replace("Amazon.com.br :", "").strip()
+    
     return {
-        "produto": nome_limpo[:80] + "...",
+        "produto": nome_produto[:80] + "...",
         "preco": preco_atual,
         "url_imagem": url_imagem,
         "nota": 4.7,
